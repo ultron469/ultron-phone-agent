@@ -35,6 +35,7 @@
             font-size: 11px;
             color: #94a3b8;
             word-break: break-all;
+            line-height: 1.45;
         }
         .btn {
             background: linear-gradient(135deg, #ef4444, #f97316);
@@ -81,9 +82,12 @@
 <body>
     <div class="card">
         <div class="title">ULTRON // SUNUCU BAĞLANTISI</div>
-        <input type="text" id="serverUrlInp" placeholder="Örn: https://xxxx.trycloudflare.com veya http://192.168.1.10:5005">
-        <button class="btn" onclick="saveServerUrl()">SUNUCU ADRESİNİ KAYDET</button>
-        <div class="mono" id="activeApiLabel">Aktif Hedef: Aynı Köken</div>
+        <input type="text" id="serverUrlInp" placeholder="https://xxxx.trycloudflare.com veya http://192.168.1.10:5005">
+        <div class="grid-2">
+            <button class="btn" onclick="saveServerUrl()">KAYDET & GÖNDER</button>
+            <button class="btn-sec" onclick="testConnection()">BAĞLANTIYI TEST ET</button>
+        </div>
+        <div class="mono" id="activeApiLabel">Hedef bekleniyor...</div>
     </div>
 
     <div class="card">
@@ -135,9 +139,16 @@
         let watchId = null;
         const STORAGE_KEY = 'ultron_phone_server_url';
 
+        function normalizeUrl(raw) {
+            let clean = (raw || '').trim().replace(/\/+$/, '');
+            if (clean && !/^https?:\/\//i.test(clean)) {
+                clean = (window.location.protocol === 'https:' ? 'https://' : 'http://') + clean;
+            }
+            return clean;
+        }
+
         function getBaseUrl() {
-            const raw = (localStorage.getItem(STORAGE_KEY) || '').trim();
-            return raw.replace(/\/+$/, '');
+            return normalizeUrl(localStorage.getItem(STORAGE_KEY) || '');
         }
 
         function apiUrl(endpoint) {
@@ -148,24 +159,52 @@
         function updateServerLabel() {
             const base = getBaseUrl();
             document.getElementById('serverUrlInp').value = base;
-            document.getElementById('activeApiLabel').innerText = base
-                ? `Aktif Hedef: ${base}`
-                : 'Aktif Hedef: Aynı Köken (Sunucu URL girilmedi)';
+            if (window.location.protocol === 'https:' && base.startsWith('http://')) {
+                document.getElementById('activeApiLabel').innerText =
+                    `UYARI: Sayfa HTTPS, hedef HTTP (${base}). Tarayıcı engellerse HTTPS tünel adresi kullan.`;
+            } else {
+                document.getElementById('activeApiLabel').innerText =
+                    base ? `Aktif Hedef: ${base}` : 'Aktif Hedef: Ayarlanmadı (URL girip kaydet)';
+            }
         }
 
         function saveServerUrl() {
-            const val = document.getElementById('serverUrlInp').value.trim().replace(/\/+$/, '');
-            if (val) {
-                localStorage.setItem(STORAGE_KEY, val);
-            } else {
-                localStorage.removeItem(STORAGE_KEY);
-            }
+            const clean = normalizeUrl(document.getElementById('serverUrlInp').value);
+            if (clean) localStorage.setItem(STORAGE_KEY, clean);
+            else localStorage.removeItem(STORAGE_KEY);
             updateServerLabel();
-            document.getElementById('agentLog').innerText = 'Sunucu adresi kaydedildi.';
+            testConnection();
             sendOnce();
         }
 
+        async function testConnection() {
+            const base = getBaseUrl();
+            if (!base) {
+                document.getElementById('agentLog').innerText = 'Önce sunucu URL girip kaydet.';
+                return;
+            }
+            document.getElementById('agentLog').innerText = `${base} test ediliyor...`;
+            try {
+                const res = await fetch(`${base}/api/phone/ping`, { mode: 'cors' });
+                const data = await res.json();
+                if (data && data.ok) {
+                    document.getElementById('agentLog').innerText = `BAĞLANTI BAŞARILI (${data.system})`;
+                } else {
+                    document.getElementById('agentLog').innerText = 'Sunucu yanıt verdi ama beklenen veri gelmedi.';
+                }
+            } catch (err) {
+                document.getElementById('agentLog').innerText =
+                    `BAĞLANTI HATASI: ${err.message}. Sunucu açık mı veya HTTPS tünel kullanılıyor mu kontrol et.`;
+            }
+        }
+
         async function sendTelemetry(pos) {
+            const base = getBaseUrl();
+            if (!base) {
+                document.getElementById('gpsStatus').innerText = 'Sunucu URL kaydedilmedi.';
+                return;
+            }
+
             let battery = null;
             try {
                 if (navigator.getBattery) {
@@ -189,7 +228,7 @@
             };
 
             try {
-                const res = await fetch(apiUrl('/api/phone/location'), {
+                const res = await fetch(`${base}/api/phone/location`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -199,10 +238,11 @@
                     document.getElementById('gpsStatus').innerText =
                         `GPS AKTİF: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)} (${new Date().toLocaleTimeString('tr-TR')})`;
                 } else if (data.ok) {
-                    document.getElementById('gpsStatus').innerText = `Bağlantı aktif (${new Date().toLocaleTimeString('tr-TR')}) — Konum izni bekleniyor.`;
+                    document.getElementById('gpsStatus').innerText =
+                        `Bağlantı aktif (${new Date().toLocaleTimeString('tr-TR')}) — Konum izni bekleniyor.`;
                 }
-            } catch (e) {
-                document.getElementById('gpsStatus').innerText = 'Sunucuya ulaşılamıyor (URL veya HTTPS/HTTP durumunu kontrol et).';
+            } catch (err) {
+                document.getElementById('gpsStatus').innerText = `Gönderim hatası: ${err.message}`;
             }
         }
 
@@ -230,42 +270,48 @@
         }
 
         async function pushEvent() {
+            const base = getBaseUrl();
+            if (!base) return;
             const app = document.getElementById('appSel').value;
             const type = document.getElementById('typeSel').value;
             const sender = document.getElementById('senderInp').value.trim() || 'Bilinmeyen';
             const text = document.getElementById('msgInp').value.trim() || (type === 'call' ? 'Arama' : 'Yeni bildirim');
 
             try {
-                await fetch(apiUrl('/api/phone/webhook'), {
+                await fetch(`${base}/api/phone/webhook`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ app, type, sender, text })
                 });
                 document.getElementById('msgInp').value = '';
                 document.getElementById('agentLog').innerText = `${app} kaydı sunucuya gönderildi.`;
-            } catch (e) {
-                document.getElementById('agentLog').innerText = 'Gönderim hatası.';
+            } catch (err) {
+                document.getElementById('agentLog').innerText = `Gönderim hatası: ${err.message}`;
             }
         }
 
         async function nudgeTiktok() {
+            const base = getBaseUrl();
+            if (!base) return;
             const target = document.getElementById('senderInp').value.trim() || 'Seri Arkadaşı';
             try {
-                await fetch(apiUrl('/api/phone/tiktok-nudge'), {
+                await fetch(`${base}/api/phone/tiktok-nudge`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ target, note: 'TikTok seri dürtüldü' })
                 });
                 document.getElementById('agentLog').innerText = `TikTok seri dürtüldü: ${target}`;
-            } catch (e) {
-                document.getElementById('agentLog').innerText = 'Dürtme gönderilemedi.';
+            } catch (err) {
+                document.getElementById('agentLog').innerText = `Dürtme hatası: ${err.message}`;
             }
         }
 
         async function saveRules() {
+            const base = getBaseUrl();
+            if (!base) return;
             const vipContacts = document.getElementById('vipInp').value.split(',').map(s => s.trim()).filter(Boolean);
             try {
-                await fetch(apiUrl('/api/phone/settings'), {
+                await fetch(`${base}/api/phone/settings`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -274,22 +320,24 @@
                     })
                 });
                 document.getElementById('agentLog').innerText = 'Kurallar güncellendi.';
-            } catch (e) {
-                document.getElementById('agentLog').innerText = 'Kural kaydedilemedi.';
+            } catch (err) {
+                document.getElementById('agentLog').innerText = `Kural hatası: ${err.message}`;
             }
         }
 
         async function pcCmd(action) {
+            const base = getBaseUrl();
+            if (!base) return;
             try {
-                const res = await fetch(apiUrl('/api/pc/command'), {
+                const res = await fetch(`${base}/api/pc/command`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action })
                 });
                 const d = await res.json();
                 document.getElementById('agentLog').innerText = d.message || 'Komut işlendi.';
-            } catch (e) {
-                document.getElementById('agentLog').innerText = 'PC komutu iletilemedi.';
+            } catch (err) {
+                document.getElementById('agentLog').innerText = `PC komut hatası: ${err.message}`;
             }
         }
 

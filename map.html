@@ -159,9 +159,10 @@
     </div>
 
     <div class="url-bar">
-        <input type="text" class="url-input" id="serverUrlInp" placeholder="Sunucu URL (Örn: https://xxxx.trycloudflare.com veya http://192.168.1.10:5005)">
-        <button class="btn" onclick="saveServerUrl()">SUNUCU ADRESİNİ KAYDET</button>
-        <span class="sub" id="activeServerText">Hedef: Aynı Köken</span>
+        <input type="text" class="url-input" id="serverUrlInp" placeholder="https://xxxx.trycloudflare.com veya http://192.168.1.10:5005">
+        <button class="btn" onclick="saveServerUrl()">KAYDET</button>
+        <button class="btn" onclick="pollState()">TEST / YENİLE</button>
+        <span class="sub" id="activeServerText">Hedef: Ayarlanmadı</span>
     </div>
 
     <div class="main-grid">
@@ -196,24 +197,27 @@
         let latestCoords = null;
         let latestData = { notifications: [], calls: [] };
 
-        function getBaseUrl() {
-            return (localStorage.getItem(STORAGE_KEY) || '').trim().replace(/\/+$/, '');
+        function normalizeUrl(raw) {
+            let clean = (raw || '').trim().replace(/\/+$/, '');
+            if (clean && !/^https?:\/\//i.test(clean)) {
+                clean = (window.location.protocol === 'https:' ? 'https://' : 'http://') + clean;
+            }
+            return clean;
         }
 
-        function apiUrl(endpoint) {
-            const base = getBaseUrl();
-            return base ? `${base}${endpoint}` : endpoint;
+        function getBaseUrl() {
+            return normalizeUrl(localStorage.getItem(STORAGE_KEY) || '');
         }
 
         function syncUrlUi() {
             const base = getBaseUrl();
             document.getElementById('serverUrlInp').value = base;
-            document.getElementById('activeServerText').innerText = base ? `Hedef: ${base}` : 'Hedef: Aynı Köken';
+            document.getElementById('activeServerText').innerText = base ? `Hedef: ${base}` : 'Hedef: Ayarlanmadı';
         }
 
         function saveServerUrl() {
-            const val = document.getElementById('serverUrlInp').value.trim().replace(/\/+$/, '');
-            if (val) localStorage.setItem(STORAGE_KEY, val);
+            const clean = normalizeUrl(document.getElementById('serverUrlInp').value);
+            if (clean) localStorage.setItem(STORAGE_KEY, clean);
             else localStorage.removeItem(STORAGE_KEY);
             syncUrlUi();
             pollState();
@@ -300,8 +304,13 @@
         }
 
         async function pollState() {
+            const base = getBaseUrl();
+            if (!base) {
+                document.getElementById('phoneLinkStatus').innerText = 'Telefon Ajanı: Sunucu URL girilmedi.';
+                return;
+            }
             try {
-                const res = await fetch(apiUrl('/api/phone/state'));
+                const res = await fetch(`${base}/api/phone/state`);
                 const state = await res.json();
                 latestData = {
                     notifications: state.notifications || [],
@@ -315,9 +324,9 @@
 
                 if (state.location) updateMap(state.location);
                 renderFeed();
-            } catch (e) {
+            } catch (err) {
                 document.getElementById('phoneLinkStatus').innerText =
-                    'Telefon Ajanı: Sunucuya ulaşılamıyor (Sunucu URL veya HTTPS/HTTP durumunu kontrol et).';
+                    `Bağlantı hatası (${err.message}). HTTPS tünel veya sunucu adresini kontrol et.`;
             }
         }
 

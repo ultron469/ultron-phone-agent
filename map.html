@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ULTRON // HARİTA & BİLDİRİMLER</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #040508;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            padding: 18px 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 12px 18px;
+            background: rgba(16, 8, 10, 0.9);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            border-radius: 10px;
+        }
+        .title {
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            color: #fca5a5;
+        }
+        .sub {
+            font-size: 11px;
+            font-family: monospace;
+            color: #94a3b8;
+        }
+        .btn {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            color: #fff;
+            padding: 7px 12px;
+            border-radius: 7px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #ef4444;
+            color: #000;
+        }
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1.35fr 1fr;
+            gap: 14px;
+            flex: 1;
+        }
+        @media (max-width: 900px) {
+            .main-grid { grid-template-columns: 1fr; }
+        }
+        .box {
+            background: rgba(12, 14, 20, 0.9);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            border-radius: 12px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        #map {
+            width: 100%;
+            height: 430px;
+            border-radius: 8px;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            z-index: 1;
+        }
+        .loc-meta {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            font-size: 11px;
+            font-family: monospace;
+            color: #cbd5e1;
+        }
+        .feed {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 465px;
+            overflow-y: auto;
+        }
+        .item {
+            background: rgba(20, 24, 34, 0.85);
+            border-left: 3px solid #64748b;
+            padding: 9px 11px;
+            border-radius: 7px;
+            font-size: 12px;
+        }
+        .item.vip {
+            border-left-color: #ef4444;
+            background: rgba(45, 10, 12, 0.7);
+        }
+        .item-top {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            font-family: monospace;
+            color: #94a3b8;
+            margin-bottom: 4px;
+        }
+        select {
+            background: #090c14;
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <div class="title">ULTRON // TELEFON HARİTA & BİLDİRİM EKRANI</div>
+            <div class="sub" id="phoneLinkStatus">Telefon Ajanı: Bağlantı bekleniyor...</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn" onclick="openMaps()">HARİTADA AÇ</button>
+            <button class="btn" onclick="window.location.href='../index.html?skipIntro=true'">GERİ</button>
+        </div>
+    </div>
+
+    <div class="main-grid">
+        <div class="box">
+            <div id="map"></div>
+            <div class="loc-meta">
+                <span id="coordsLabel">Konum: --</span>
+                <span id="updatedLabel">Son Veri: --</span>
+            </div>
+        </div>
+
+        <div class="box">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="title" style="font-size:12px;">GELEN BİLDİRİMLER & ARAMALAR</span>
+                <select id="filterSel" onchange="renderFeed()">
+                    <option value="ALL">TÜMÜ</option>
+                    <option value="ÖNEMLİ">ÖNEMLİ</option>
+                    <option value="WhatsApp">WHATSAPP</option>
+                    <option value="Instagram">INSTAGRAM</option>
+                    <option value="Discord">DISCORD</option>
+                    <option value="TikTok">TIKTOK</option>
+                    <option value="call">ARAMALAR</option>
+                </select>
+            </div>
+            <div class="feed" id="feedBox"></div>
+        </div>
+    </div>
+
+    <script>
+        let map, marker, accuracyCircle, polyline;
+        let latestCoords = null;
+        let latestData = { notifications: [], calls: [] };
+
+        function initMap() {
+            map = L.map('map').setView([35.145, 32.835], 13);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO',
+                maxZoom: 19
+            }).addTo(map);
+            polyline = L.polyline([], { color: '#ef4444', weight: 3 }).addTo(map);
+        }
+
+        function updateMap(loc) {
+            if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return;
+            latestCoords = { lat: loc.lat, lng: loc.lng };
+            const ll = [loc.lat, loc.lng];
+
+            if (!marker) {
+                marker = L.circleMarker(ll, {
+                    radius: 9,
+                    fillColor: '#ef4444',
+                    color: '#fff',
+                    weight: 2,
+                    fillOpacity: 1
+                }).addTo(map).bindPopup('Telefon Canlı Konumu');
+            } else {
+                marker.setLatLng(ll);
+            }
+
+            if (loc.accuracy) {
+                if (!accuracyCircle) {
+                    accuracyCircle = L.circle(ll, { radius: loc.accuracy, color: '#ef4444', fillOpacity: 0.12, weight: 1 }).addTo(map);
+                } else {
+                    accuracyCircle.setLatLng(ll);
+                    accuracyCircle.setRadius(loc.accuracy);
+                }
+            }
+
+            if (Array.isArray(loc.history) && loc.history.length > 0) {
+                polyline.setLatLngs(loc.history.map(p => [p.lat, p.lng]));
+            }
+
+            map.setView(ll, 15);
+            document.getElementById('coordsLabel').innerText = `Konum: ${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)} (±${Math.round(loc.accuracy || 0)}m)`;
+            document.getElementById('updatedLabel').innerText = `Son Veri: ${loc.updatedAt ? new Date(loc.updatedAt).toLocaleTimeString('tr-TR') : '--'}`;
+        }
+
+        function openMaps() {
+            if (!latestCoords) return alert('Henüz konum verisi gelmedi.');
+            window.open(`https://www.google.com/maps?q=${latestCoords.lat},${latestCoords.lng}`, '_blank');
+        }
+
+        function renderFeed() {
+            const filter = document.getElementById('filterSel').value;
+            const box = document.getElementById('feedBox');
+            const combined = [
+                ...(latestData.calls || []).map(c => ({ ...c, type: 'call' })),
+                ...(latestData.notifications || [])
+            ];
+
+            const filtered = combined.filter(entry => {
+                if (filter === 'ALL') return true;
+                if (filter === 'ÖNEMLİ') return entry.priority === 'ÖNEMLİ';
+                if (filter === 'call') return entry.type === 'call';
+                return (entry.app || '').toLowerCase() === filter.toLowerCase();
+            });
+
+            if (filtered.length === 0) {
+                box.innerHTML = '<div class="sub" style="padding:20px; text-align:center;">Kayıt yok.</div>';
+                return;
+            }
+
+            box.innerHTML = filtered.map(item => `
+                <div class="item ${item.priority === 'ÖNEMLİ' ? 'vip' : ''}">
+                    <div class="item-top">
+                        <span>[${(item.app || 'SİSTEM').toUpperCase()}] ${item.sender || ''}</span>
+                        <span>${item.priority || 'NORMAL'} • ${item.time || ''}</span>
+                    </div>
+                    <div>${item.type === 'call' ? '📞 Arama Kaydı' : (item.text || '')}</div>
+                </div>
+            `).join('');
+        }
+
+        async function pollState() {
+            try {
+                const res = await fetch('/api/phone/state');
+                const state = await res.json();
+                latestData = {
+                    notifications: state.notifications || [],
+                    calls: state.calls || []
+                };
+
+                const dev = state.device || {};
+                const lastSeenText = dev.lastSeen ? new Date(dev.lastSeen).toLocaleTimeString('tr-TR') : 'Yok';
+                document.getElementById('phoneLinkStatus').innerText =
+                    `Telefon Ajanı: ${dev.online ? 'AKTİF' : 'BEKLEMEDE'} | Batarya: %${dev.battery ?? '--'} | Son Sinyal: ${lastSeenText}`;
+
+                if (state.location) updateMap(state.location);
+                renderFeed();
+            } catch (e) {}
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            pollState();
+            setInterval(pollState, 3000);
+        });
+    </script>
+</body>
+</html>

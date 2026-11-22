@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ULTRON // MOBİL AJAN</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #040508;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .card {
+            background: rgba(14, 16, 24, 0.94);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            border-radius: 12px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .title {
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            color: #fca5a5;
+        }
+        .mono {
+            font-family: monospace;
+            font-size: 11px;
+            color: #94a3b8;
+        }
+        .btn {
+            background: linear-gradient(135deg, #ef4444, #f97316);
+            border: none;
+            color: #000;
+            font-weight: 800;
+            font-size: 11px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .btn-sec {
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #f8fafc;
+            font-weight: 700;
+            font-size: 11px;
+            padding: 9px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        input, select {
+            width: 100%;
+            background: #070a11;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #fff;
+            padding: 9px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="title">ULTRON // TELEFON AJANI (KONUM & BİLDİRİM)</div>
+        <div class="mono" id="gpsStatus">GPS: Başlatılıyor...</div>
+        <div class="grid-2">
+            <button class="btn" onclick="startTracking()">CANLI KONUMU AÇ</button>
+            <button class="btn-sec" onclick="sendOnce()">ŞİMDİ GÖNDER</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="title">UYGULAMA BİLDİRİM / ARAMA / SERİ KÖPRÜSÜ</div>
+        <select id="appSel">
+            <option value="WhatsApp">WhatsApp</option>
+            <option value="Instagram">Instagram</option>
+            <option value="Discord">Discord</option>
+            <option value="TikTok">TikTok</option>
+        </select>
+        <select id="typeSel">
+            <option value="message">Mesaj / Bildirim</option>
+            <option value="call">Gelen Arama</option>
+        </select>
+        <input type="text" id="senderInp" placeholder="Gönderen / Kişi">
+        <input type="text" id="msgInp" placeholder="Mesaj içeriği veya seri notu">
+        <div class="grid-2">
+            <button class="btn" onclick="pushEvent()">BİLDİRİM GÖNDER</button>
+            <button class="btn-sec" onclick="nudgeTiktok()">TİKTOK SERİ DÜRT</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="title">KURALLAR & UZAKTAN PC KONTROL</div>
+        <div class="row">
+            <span>WhatsApp açmayınca oto-cevap</span>
+            <input type="checkbox" id="waAutoChk" style="width:auto;" checked onchange="saveRules()">
+        </div>
+        <input type="text" id="vipInp" placeholder="Önemli kişiler (virgülle ayır)" onchange="saveRules()">
+        <div class="grid-2">
+            <button class="btn-sec" onclick="pcCmd('lock_pc')">PC KİLİTLE</button>
+            <button class="btn-sec" onclick="pcCmd('sleep_pc')">PC UYKU</button>
+            <button class="btn-sec" onclick="pcCmd('open_study')">ÇALIŞMA MODU</button>
+            <button class="btn-sec" onclick="pcCmd('mute_toggle')">PC SES AÇ/KAPA</button>
+        </div>
+        <div class="mono" id="agentLog">Hazır.</div>
+    </div>
+
+    <script>
+        let watchId = null;
+
+        async function sendTelemetry(pos) {
+            let battery = null;
+            try {
+                if (navigator.getBattery) {
+                    const b = await navigator.getBattery();
+                    battery = Math.round(b.level * 100);
+                }
+            } catch (e) {}
+
+            const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            const netType = conn && conn.effectiveType ? conn.effectiveType.toUpperCase() : (navigator.onLine ? 'ONLINE' : 'OFFLINE');
+
+            const payload = {
+                lat: pos ? pos.coords.latitude : null,
+                lng: pos ? pos.coords.longitude : null,
+                accuracy: pos ? pos.coords.accuracy : null,
+                speed: pos ? pos.coords.speed : null,
+                heading: pos ? pos.coords.heading : null,
+                battery,
+                networkType: netType,
+                online: navigator.onLine
+            };
+
+            try {
+                const res = await fetch('/api/phone/location', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.ok && pos) {
+                    document.getElementById('gpsStatus').innerText =
+                        `GPS AKTİF: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)} (${new Date().toLocaleTimeString('tr-TR')})`;
+                }
+            } catch (e) {
+                document.getElementById('gpsStatus').innerText = 'Bağlantı bekleniyor (internet kapalı veya sunucuya ulaşılamıyor).';
+            }
+        }
+
+        function sendOnce() {
+            if (!navigator.geolocation) {
+                sendTelemetry(null);
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => sendTelemetry(pos),
+                () => sendTelemetry(null),
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
+
+        function startTracking() {
+            sendOnce();
+            if (navigator.geolocation && watchId === null) {
+                watchId = navigator.geolocation.watchPosition(
+                    (pos) => sendTelemetry(pos),
+                    () => {},
+                    { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+                );
+            }
+        }
+
+        async function pushEvent() {
+            const app = document.getElementById('appSel').value;
+            const type = document.getElementById('typeSel').value;
+            const sender = document.getElementById('senderInp').value.trim() || 'Bilinmeyen';
+            const text = document.getElementById('msgInp').value.trim() || (type === 'call' ? 'Arama' : 'Yeni bildirim');
+
+            await fetch('/api/phone/webhook', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ app, type, sender, text })
+            });
+            document.getElementById('msgInp').value = '';
+            document.getElementById('agentLog').innerText = `${app} kaydı PC'ye aktarıldı.`;
+        }
+
+        async function nudgeTiktok() {
+            const target = document.getElementById('senderInp').value.trim() || 'Seri Arkadaşı';
+            await fetch('/api/phone/tiktok-nudge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target, note: 'TikTok seri dürtüldü' })
+            });
+            document.getElementById('agentLog').innerText = `TikTok seri dürtüldü: ${target}`;
+        }
+
+        async function saveRules() {
+            const vipContacts = document.getElementById('vipInp').value.split(',').map(s => s.trim()).filter(Boolean);
+            await fetch('/api/phone/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    autoReplyWhatsApp: document.getElementById('waAutoChk').checked,
+                    vipContacts
+                })
+            });
+            document.getElementById('agentLog').innerText = 'Kurallar güncellendi.';
+        }
+
+        async function pcCmd(action) {
+            const res = await fetch('/api/pc/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action })
+            });
+            const d = await res.json();
+            document.getElementById('agentLog').innerText = d.message || 'Komut işlendi.';
+        }
+
+        window.addEventListener('online', () => {
+            startTracking();
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            startTracking();
+        });
+    </script>
+</body>
+</html>

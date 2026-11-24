@@ -159,7 +159,7 @@
     </div>
 
     <div class="url-bar">
-        <input type="text" class="url-input" id="serverUrlInp" placeholder="https://xxxx.trycloudflare.com veya http://192.168.1.10:5005">
+        <input type="text" class="url-input" id="serverUrlInp" placeholder="Sunucu URL (Örn: https://xxxx.onrender.com veya https://xxxx.trycloudflare.com)">
         <button class="btn" onclick="saveServerUrl()">KAYDET</button>
         <button class="btn" onclick="pollState()">TEST / YENİLE</button>
         <span class="sub" id="activeServerText">Hedef: Ayarlanmadı</span>
@@ -225,8 +225,8 @@
 
         function initMap() {
             map = L.map('map').setView([35.145, 32.835], 13);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap &copy; CARTO',
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
                 maxZoom: 19
             }).addTo(map);
             polyline = L.polyline([], { color: '#ef4444', weight: 3 }).addTo(map);
@@ -326,7 +326,7 @@
                 renderFeed();
             } catch (err) {
                 document.getElementById('phoneLinkStatus').innerText =
-                    `Bağlantı hatası (${err.message}). HTTPS tünel veya sunucu adresini kontrol et.`;
+                    `Bağlantı hatası (${err.message}). Sunucu URL veya HTTPS durumunu kontrol et.`;
             }
         }
 

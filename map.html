@@ -39,34 +39,12 @@
             font-size: 11px;
             font-family: monospace;
             color: #94a3b8;
-            word-break: break-all;
-        }
-        .url-bar {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: center;
-            padding: 10px 14px;
-            background: rgba(12, 14, 20, 0.9);
-            border: 1px solid rgba(239, 68, 68, 0.25);
-            border-radius: 10px;
-        }
-        .url-input {
-            flex: 1;
-            min-width: 220px;
-            background: #070a11;
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            color: #fff;
-            padding: 8px 10px;
-            border-radius: 7px;
-            font-size: 12px;
-            font-family: monospace;
         }
         .btn {
-            background: rgba(239, 68, 68, 0.22);
-            border: 1px solid rgba(239, 68, 68, 0.55);
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.5);
             color: #fff;
-            padding: 8px 13px;
+            padding: 7px 12px;
             border-radius: 7px;
             font-size: 11px;
             font-weight: 700;
@@ -96,7 +74,7 @@
         }
         #map {
             width: 100%;
-            height: 410px;
+            height: 430px;
             border-radius: 8px;
             border: 1px solid rgba(239, 68, 68, 0.3);
             z-index: 1;
@@ -114,7 +92,7 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
-            max-height: 445px;
+            max-height: 465px;
             overflow-y: auto;
         }
         .item {
@@ -154,15 +132,8 @@
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <button class="btn" onclick="openMaps()">HARİTADA AÇ</button>
-            <button class="btn" onclick="window.location.href='./index.html'">MOBİL AJAN</button>
+            <button class="btn" onclick="window.location.href='../index.html?skipIntro=true'">GERİ</button>
         </div>
-    </div>
-
-    <div class="url-bar">
-        <input type="text" class="url-input" id="serverUrlInp" placeholder="Sunucu URL (Örn: https://xxxx.onrender.com veya https://xxxx.trycloudflare.com)">
-        <button class="btn" onclick="saveServerUrl()">KAYDET</button>
-        <button class="btn" onclick="pollState()">TEST / YENİLE</button>
-        <span class="sub" id="activeServerText">Hedef: Ayarlanmadı</span>
     </div>
 
     <div class="main-grid">
@@ -192,36 +163,9 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'ultron_phone_server_url';
         let map, marker, accuracyCircle, polyline;
         let latestCoords = null;
         let latestData = { notifications: [], calls: [] };
-
-        function normalizeUrl(raw) {
-            let clean = (raw || '').trim().replace(/\/+$/, '');
-            if (clean && !/^https?:\/\//i.test(clean)) {
-                clean = (window.location.protocol === 'https:' ? 'https://' : 'http://') + clean;
-            }
-            return clean;
-        }
-
-        function getBaseUrl() {
-            return normalizeUrl(localStorage.getItem(STORAGE_KEY) || '');
-        }
-
-        function syncUrlUi() {
-            const base = getBaseUrl();
-            document.getElementById('serverUrlInp').value = base;
-            document.getElementById('activeServerText').innerText = base ? `Hedef: ${base}` : 'Hedef: Ayarlanmadı';
-        }
-
-        function saveServerUrl() {
-            const clean = normalizeUrl(document.getElementById('serverUrlInp').value);
-            if (clean) localStorage.setItem(STORAGE_KEY, clean);
-            else localStorage.removeItem(STORAGE_KEY);
-            syncUrlUi();
-            pollState();
-        }
 
         function initMap() {
             map = L.map('map').setView([35.145, 32.835], 13);
@@ -262,7 +206,8 @@
                 polyline.setLatLngs(loc.history.map(p => [p.lat, p.lng]));
             }
 
-            map.setView(ll, 15);
+            !mapCenteredOnce
+            if (latestCoords && map) map.setView([latestCoords.lat, latestCoords.lng], 15);
             document.getElementById('coordsLabel').innerText = `Konum: ${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)} (±${Math.round(loc.accuracy || 0)}m)`;
             document.getElementById('updatedLabel').innerText = `Son Veri: ${loc.updatedAt ? new Date(loc.updatedAt).toLocaleTimeString('tr-TR') : '--'}`;
         }
@@ -304,13 +249,8 @@
         }
 
         async function pollState() {
-            const base = getBaseUrl();
-            if (!base) {
-                document.getElementById('phoneLinkStatus').innerText = 'Telefon Ajanı: Sunucu URL girilmedi.';
-                return;
-            }
             try {
-                const res = await fetch(`${base}/api/phone/state`);
+                const res = await fetch('/api/phone/state');
                 const state = await res.json();
                 latestData = {
                     notifications: state.notifications || [],
@@ -324,14 +264,10 @@
 
                 if (state.location) updateMap(state.location);
                 renderFeed();
-            } catch (err) {
-                document.getElementById('phoneLinkStatus').innerText =
-                    `Bağlantı hatası (${err.message}). Sunucu URL veya HTTPS durumunu kontrol et.`;
-            }
+            } catch (e) {}
         }
 
         window.addEventListener('DOMContentLoaded', () => {
-            syncUrlUi();
             initMap();
             pollState();
             setInterval(pollState, 3000);
